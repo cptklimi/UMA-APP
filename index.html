@@ -875,7 +875,7 @@ function addNoteFromEdit(){
   if(!ac)return;
   var t=document.getElementById('ec-note-text').value.trim();
   if(!t)return;
-  ac.notes.unshift({text:t,tag:document.getElementById('ec-note-tag').value,date:today()});
+  ac.notes.unshift({text:t,tag:document.getElementById('ec-note-tag').value,date:td()});
   document.getElementById('ec-note-text').value='';
   renderEditNotes();
   updateContact_DB(ac);saveData();
