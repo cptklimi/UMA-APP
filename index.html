@@ -708,7 +708,16 @@ function ini(c){return(c.first[0]||'')+(c.last[0]||'')}
 function avs(c){var p=AVC[c.ai%AVC.length];return'background:'+p[0]+';color:'+p[1]}
 function fmtD(d){return d.toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})}
 function td(){return fmtD(new Date())}
-function h2r(h,a){var r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);return'rgba('+r+','+g+','+b+','+a+')'}
+// Hex to rgba. Handles 3-digit shorthand: slicing fixed positions turned
+// '#666' into rgba(102,6,NaN), an invalid colour the browser drops, which
+// left those chips and tiles with no background at all.
+function h2r(h,a){
+  var s=String(h||'').replace('#','');
+  if(s.length===3)s=s[0]+s[0]+s[1]+s[1]+s[2]+s[2];
+  var n=parseInt(s,16);
+  if(s.length!==6||isNaN(n))return'rgba(136,136,136,'+a+')';
+  return'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';
+}
 function bs(cat){return'background:'+h2r(cat.color,.15)+';color:'+cat.color}
 function nl(cat){return cat.amount===0?'TODAY':'In '+cat.amount+' '+cat.unit}
 function sc(s){return s>=70?'#1D9E75':s>=40?'#EF9F27':'#E24B4A'}
@@ -731,11 +740,32 @@ function go(id){
 function os(id){document.getElementById(id).classList.add('open')}
 function cs(id){document.getElementById(id).classList.remove('open')}
 
+// Open a category on its own screen rather than expanding it under the
+// stats on the home screen, which buried the list and read as confusing.
+// Reuses the Contacts screen so search, sorting and the contact rows all
+// keep working; `go` calls rcl() for us.
+function openCat(id){
+  fcid=id;
+  // Drop any leftover search, or the category would arrive pre-filtered by
+  // a query the user typed earlier and has forgotten about.
+  var si=document.getElementById('si');
+  if(si)si.value='';
+  go('s-contacts');
+}
+
 function rh(){
   var due=cons.filter(function(c){return c.next==='TODAY'});
   var defs=[{lb:'Total contacts',v:cons.length,col:'var(--text)',k:'all'},{lb:'Follow-ups due',v:due.length,col:'var(--red)',k:'due'}];
   cats.forEach(function(cat){defs.push({lb:cat.name,v:cons.filter(function(c){return c.catId===cat.id}).length,col:cat.color,k:cat.id})});
-  document.getElementById('sg').innerHTML=defs.map(function(s){var on=hf===s.k;return'<div class="stat'+(on?' active-stat':'')+'" style="border-color:'+(on?s.col:'transparent')+'" onclick="hf=\''+s.k+'\';rh()"><div class="stat-num" style="color:'+s.col+'">'+s.v+'</div><div class="stat-lbl">'+s.lb+'</div></div>'}).join('');
+  document.getElementById('sg').innerHTML=defs.map(function(s){
+    var isDue=s.k==='due';
+    var on=isDue&&hf==='due';
+    // Category ids are numbers. Quoting them turned the key into a string,
+    // so every `c.catId===hf` comparison failed and the list came back empty.
+    var lit=typeof s.k==='number'?String(s.k):"'"+s.k+"'";
+    var act=isDue?"hf='due';rh()":'openCat('+lit+')';
+    return'<div class="stat'+(on?' active-stat':'')+'" style="border-color:'+(on?s.col:'transparent')+'" onclick="'+act+'"><div class="stat-num" style="color:'+s.col+'">'+s.v+'</div><div class="stat-lbl">'+s.lb+'</div></div>'
+  }).join('');
   var cat2=hf!=='all'&&hf!=='due'?gc(hf):null;
   document.getElementById('ht').textContent=cat2?cat2.name+' contacts':(hf==='due'?'Follow-ups due today':'All contacts');
   document.getElementById('hc').style.display=(hf==='all'||hf==='due')?'none':'block';
@@ -750,7 +780,7 @@ function rcl(){
   var opts=[{k:'default',l:'Default'}].concat(evs.map(function(e){return{k:'event:'+e,l:e}}));
   sb.innerHTML='<span style="font-size:11px;color:var(--text2);padding:5px 0;flex-shrink:0;align-self:center;font-weight:700">Sort:</span>'+opts.map(function(o){var on=sm===o.k;return'<button class="sc'+(on?' active':'')+'" onclick="sm=\''+o.k+'\';rcl()">'+o.l+'</button>'}).join('');
   var co=[{id:'all',name:'All',color:''}].concat(cats);
-  document.getElementById('fch').innerHTML=co.map(function(cat){var on=fcid===(cat.id==='all'?'all':cat.id);var col=cat.color;var sty=on?(cat.id==='all'?'background:var(--text);color:var(--bg)':'background:'+h2r(col,.18)+';color:'+col+';border-color:'+col):(cat.id==='all'?'background:var(--bg2);color:var(--text2)':'background:'+h2r(col,.08)+';color:'+col+';opacity:.75');return'<button class="fc" onclick="fcid=\''+(cat.id==='all'?'all':cat.id)+'\';rcl()" style="'+sty+'">'+(cat.id==='all'?'All':cat.name)+'</button>'}).join('');
+  document.getElementById('fch').innerHTML=co.map(function(cat){var on=fcid===(cat.id==='all'?'all':cat.id);var col=cat.color;var sty=on?(cat.id==='all'?'background:var(--text);color:var(--bg)':'background:'+h2r(col,.18)+';color:'+col+';border-color:'+col):(cat.id==='all'?'background:var(--bg2);color:var(--text2)':'background:'+h2r(col,.08)+';color:'+col+';opacity:.75');return'<button class="fc" onclick="fcid='+(cat.id==='all'?"'all'":cat.id)+';rcl()" style="'+sty+'">'+(cat.id==='all'?'All':cat.name)+'</button>'}).join('');
   var q=(document.getElementById('si').value||'').toLowerCase();
   var f=cons.filter(function(c){return(!q||(c.first+' '+c.last+' '+c.company).toLowerCase().includes(q))&&(fcid==='all'||c.catId==fcid)});
   var lst=document.getElementById('cl');lst.innerHTML='';
