@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="UMA">
+<meta name="apple-mobile-web-app-title" content="PocketC">
 <meta name="theme-color" content="#ffffff">
-<title>UMA — Ultra Mega App</title>
+<title>PocketC</title>
 <style id="icons">
 /* Inline SVG icons - no CDN dependency */
 i[class^="ti"] {
@@ -145,7 +145,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 <div id="s-auth" class="screen" style="min-height:100vh;background:var(--bg)">
   <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:32px 28px">
 
-    <!-- UMA LOGO -->
+    <!-- POCKETC LOGO -->
     <div style="margin-bottom:32px">
       <svg width="110" height="110" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
         <!-- Outer circle background -->
@@ -175,7 +175,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       </svg>
     </div>
 
-    <h1 style="font-size:32px;font-weight:800;letter-spacing:-0.8px;margin-bottom:10px;text-align:center">UMA</h1>
+    <h1 style="font-size:32px;font-weight:800;letter-spacing:-0.8px;margin-bottom:10px;text-align:center">PocketC</h1>
     <p style="font-size:15px;color:var(--text2);margin-bottom:52px;text-align:center;line-height:1.6">Your personal network manager.<br>Every connection, perfectly utilised.</p>
 
     <button onclick="showAuthScreen('s-signup')" style="width:100%;background:var(--text);color:var(--bg);border:none;border-radius:14px;padding:18px;font-size:17px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:14px;letter-spacing:-0.2px">Create account</button>
@@ -238,7 +238,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 <div id="s-home" class="screen">
   <div class="topbar">
     <button class="icon-btn" onclick="go('s-settings')"><i class="ti ti-settings"></i></button>
-    <h1>UMA</h1>
+    <h1>PocketC</h1>
     <button class="icon-btn" onclick="openQRSheet()"><i class="ti ti-qrcode"></i></button>
   </div>
   <div class="content">
@@ -647,10 +647,38 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 <script>
 var PAL=['#E24B4A','#EF9F27','#1D9E75','#534AB7','#185FA5','#993556','#666'];
 var AVC=[['#EEEDFE','#3C3489'],['#E1F5EE','#085041'],['#FAEEDA','#633806'],['#FAECE7','#712B13'],['#E6F1FB','#0C447C']];
+// ── STORAGE KEY MIGRATION (UMA → PocketC) ──
+// Keys were renamed when the app was renamed. Without this, every existing
+// install would appear to lose its saved contacts and be signed out, because
+// the app would look under pocketc_* while the data sat under uma_*.
+// Runs before the Supabase client is created, since that reads the auth key.
+// Safe to leave in place; it does nothing once there is nothing left to move.
+(function migrateStorageKeys(){
+  var renamed={
+    uma_contacts:'pocketc_contacts',
+    uma_cats:'pocketc_cats',
+    uma_events:'pocketc_events',
+    uma_profile:'pocketc_profile',
+    uma_keep_signed_in:'pocketc_keep_signed_in',
+    uma_auth_session:'pocketc_auth_session'
+  };
+  for(var oldKey in renamed){
+    try{
+      var val=localStorage.getItem(oldKey);
+      if(val===null)continue;
+      // Never clobber newer data already written under the new key.
+      if(localStorage.getItem(renamed[oldKey])===null){
+        localStorage.setItem(renamed[oldKey],val);
+      }
+      localStorage.removeItem(oldKey);
+    }catch(e){/* private mode, blocked storage — nothing to migrate */}
+  }
+})();
+
 // ── SUPABASE ──
 var SUPA_URL='https://ktlrlzuogjxqapuqktgr.supabase.co';
 var SUPA_KEY='sb_publishable_Htwvtjfj1JbTm8guqJcmJg_RU3RT1M_';
-var supaOpts={auth:{persistSession:true,storageKey:'uma_auth_session',storage:window.localStorage,autoRefreshToken:true,detectSessionInUrl:true}};
+var supaOpts={auth:{persistSession:true,storageKey:'pocketc_auth_session',storage:window.localStorage,autoRefreshToken:true,detectSessionInUrl:true}};
 var supa=null;
 
 // Visible error bar — so failures never happen silently again
@@ -1107,15 +1135,15 @@ function showLoading(show){
 // Keep localStorage as fallback
 function saveData(){
   try{
-    localStorage.setItem('uma_contacts',JSON.stringify(cons));
-    localStorage.setItem('uma_cats',JSON.stringify(cats));
-    localStorage.setItem('uma_events',JSON.stringify(evs));
+    localStorage.setItem('pocketc_contacts',JSON.stringify(cons));
+    localStorage.setItem('pocketc_cats',JSON.stringify(cats));
+    localStorage.setItem('pocketc_events',JSON.stringify(evs));
   }catch(e){}
 }
 
 // ── PROFILE ──
 var profile={name:'',phone:'',email:'',company:'',title:'',linkedin:'',instagram:'',whatsapp:'',website:'',booking:''};
-(function(){try{var p=localStorage.getItem('uma_profile');if(p)profile=JSON.parse(p)}catch(e){}})();
+(function(){try{var p=localStorage.getItem('pocketc_profile');if(p)profile=JSON.parse(p)}catch(e){}})();
 
 async function loadProfileFromDB(){
   if(offlineMode||!supa){loadProfileUI();return;}
@@ -1133,7 +1161,7 @@ async function loadProfileFromDB(){
       profile.whatsapp=res.data.whatsapp||'';
       profile.website=res.data.website||'';
       profile.booking=res.data.booking||'';
-      try{localStorage.setItem('uma_profile',JSON.stringify(profile))}catch(e){}
+      try{localStorage.setItem('pocketc_profile',JSON.stringify(profile))}catch(e){}
     }
   }catch(e){console.warn('Profile load failed:',e);}
 }
@@ -1142,7 +1170,7 @@ async function saveProfile(){
   var flds={name:'p-name',phone:'p-phone',email:'p-email',company:'p-company',title:'p-title',linkedin:'p-linkedin',instagram:'p-instagram',whatsapp:'p-whatsapp',website:'p-website',booking:'p-booking'};
   Object.keys(flds).forEach(function(k){var el=document.getElementById(flds[k]);if(el)profile[k]=(el.value||'').trim()});
   // Save to localStorage as backup
-  try{localStorage.setItem('uma_profile',JSON.stringify(profile))}catch(e){}
+  try{localStorage.setItem('pocketc_profile',JSON.stringify(profile))}catch(e){}
   // Save to Supabase
   if(currentUser&&!offlineMode&&supa){
     var res=await supa.from('profiles').upsert({
@@ -1528,7 +1556,7 @@ async function signIn(btn){
   btn.textContent='Sign in';btn.disabled=false;
   if(res.error){err.textContent=res.error.message;err.style.display='block';return;}
   // Save preference
-  try{localStorage.setItem('uma_keep_signed_in', keepSignedIn?'1':'0');}catch(e){}
+  try{localStorage.setItem('pocketc_keep_signed_in', keepSignedIn?'1':'0');}catch(e){}
   currentUser=res.data.user;
   onSignedIn(currentUser);
 }
@@ -1549,7 +1577,7 @@ async function adminSignIn(btn){
       res=await supa.auth.signInWithPassword({email:ADMIN_EMAIL,password:ADMIN_PASS});
       if(res.error){return fail('Admin account created, but Supabase wants the email confirmed first.\n\nGo to Supabase > Authentication > Sign In / Providers > Email and turn OFF "Confirm email", then tap this button again.');}
     }
-    try{localStorage.setItem('uma_keep_signed_in','1');}catch(e){}
+    try{localStorage.setItem('pocketc_keep_signed_in','1');}catch(e){}
     currentUser=res.data.user;
     onSignedIn(currentUser);
   }catch(e){fail('Sign in failed: '+(e.message||e));}
@@ -1558,11 +1586,11 @@ async function adminSignIn(btn){
 async function signOut(){
   await supa.auth.signOut();
   currentUser=null;
-  try{localStorage.removeItem('uma_keep_signed_in');}catch(e){}
+  try{localStorage.removeItem('pocketc_keep_signed_in');}catch(e){}
   cons=[];evs=['Business breakfast','Networking night','TechConf 2025'];
   cats=[{id:1,name:'Money Bajby',color:'#EF9F27',amount:0,unit:'today'},{id:2,name:'Needs more sauce',color:'#1D9E75',amount:3,unit:'days'},{id:3,name:'Lost case',color:'#666',amount:14,unit:'days'}];
   profile={name:'',phone:'',email:'',company:'',title:'',linkedin:'',instagram:'',whatsapp:'',website:''};
-  try{localStorage.removeItem('uma_profile');}catch(e){}
+  try{localStorage.removeItem('pocketc_profile');}catch(e){}
   document.querySelectorAll('.screen').forEach(function(s){s.style.display='none'});
   showAuthScreen('s-auth');
 }
@@ -1583,9 +1611,9 @@ function goOffline(){
   offlineMode=true;
   currentUser={id:'offline-local',email:'offline@device',user_metadata:{full_name:'Offline mode'}};
   try{
-    var sc=localStorage.getItem('uma_contacts'); if(sc)cons=JSON.parse(sc);
-    var sk=localStorage.getItem('uma_cats');     if(sk)cats=JSON.parse(sk);
-    var se=localStorage.getItem('uma_events');   if(se)evs=JSON.parse(se);
+    var sc=localStorage.getItem('pocketc_contacts'); if(sc)cons=JSON.parse(sc);
+    var sk=localStorage.getItem('pocketc_cats');     if(sk)cats=JSON.parse(sk);
+    var se=localStorage.getItem('pocketc_events');   if(se)evs=JSON.parse(se);
   }catch(e){}
   if(cats&&cats.length)catC=Math.max.apply(null,cats.map(function(c){return c.id}))+1;
   document.querySelectorAll('.screen').forEach(function(s){s.style.display='none';});
@@ -1620,11 +1648,11 @@ function onSignedIn(user){
 document.querySelectorAll('.screen').forEach(function(s){s.style.display='none';});
 
 // Boot: create the Supabase client, retrying from a second CDN if the first failed
-function bootUMA(){
+function bootApp(){
   if(!window.supabase||!window.supabase.createClient){
     var s=document.createElement('script');
     s.src='https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
-    s.onload=function(){startUMA()};
+    s.onload=function(){startApp()};
     s.onerror=function(){
       showAuthScreen('s-auth');
       showErr('Could not load the Supabase library. Check your internet connection and reload.');
@@ -1632,10 +1660,10 @@ function bootUMA(){
     document.head.appendChild(s);
     return;
   }
-  startUMA();
+  startApp();
 }
 
-function startUMA(){
+function startApp(){
   try{
     supa=window.supabase.createClient(SUPA_URL,SUPA_KEY,supaOpts);
   }catch(e){
@@ -1657,7 +1685,7 @@ function startUMA(){
   attachAuthListener();
 }
 
-bootUMA();
+bootApp();
 
 // Listen for auth changes (e.g. email confirmation)
 function attachAuthListener(){
