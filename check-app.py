@@ -186,9 +186,17 @@ def check_icons(html: str) -> list:
 
 
 def check_duplicate_functions(js: str) -> list:
-    """A function declared twice: the later one silently replaces the first."""
+    """A top-level function declared twice: the later silently replaces it.
+
+    Only unindented declarations count. A nested helper is scoped to its
+    parent, so two functions may share a name harmlessly — flagging those
+    produces warnings that are always wrong, and a check that cries wolf
+    stops being read.
+    """
     seen = {}
-    for match in re.finditer(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(", js):
+    for match in re.finditer(
+        r"^function\s+([A-Za-z_$][\w$]*)\s*\(", js, re.M
+    ):
         line = js[: match.start()].count("\n") + 1
         seen.setdefault(match.group(1), []).append(line)
     return sorted((n, ls) for n, ls in seen.items() if len(ls) > 1)

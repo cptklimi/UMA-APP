@@ -384,7 +384,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <div class="fl">Company</div><input type="text" id="nco" placeholder="Company name">
     <div class="fl">LinkedIn</div><input type="text" id="nli" placeholder="linkedin.com/in/...">
     <div class="fl">Instagram</div><input type="text" id="nig" placeholder="@handle">
-    <button class="primary-btn" onclick="os('sh-where');rwl()">Continue — where did you meet?</button>
+    <!-- Snap the card now, type the details later. capture="environment"
+         opens the rear camera straight away on a phone. -->
+    <input type="file" id="card-input" accept="image/*" capture="environment" style="display:none" onchange="captureCard(this)">
+    <div id="card-preview" style="display:none;margin:4px 0 12px"></div>
+    <button class="secondary-btn" id="card-btn" style="margin-bottom:10px" onclick="document.getElementById('card-input').click()"><i class="ti ti-camera" style="font-size:15px;vertical-align:-2px;margin-right:6px"></i>Take a picture of business card</button>
+    <button class="primary-btn" onclick="os('sh-where');rwl()">Continue</button>
   </div>
 </div>
 
@@ -740,6 +745,87 @@ function go(id){
 function os(id){document.getElementById(id).classList.add('open')}
 function cs(id){document.getElementById(id).classList.remove('open')}
 
+// ── BUSINESS CARD CAPTURE ──
+// Held here until svc() creates the contact, since the contact has no id
+// until Supabase returns one.
+var pendingCard=null;
+
+// A phone photo is 3–8MB, and base64 adds about a third on top. Several of
+// those would blow the ~5MB localStorage quota on their own and bloat every
+// Supabase row. 1400px at q0.72 keeps card text readable at roughly 150–300KB.
+function compressImage(file,maxW,quality,cb,onError){
+  var reader=new FileReader();
+  reader.onerror=function(){onError('Could not read that image.')};
+  reader.onload=function(e){
+    var img=new Image();
+    img.onerror=function(){onError('That file does not look like an image.')};
+    img.onload=function(){
+      try{
+        var w=img.width,h=img.height;
+        if(w>maxW){h=Math.round(h*(maxW/w));w=maxW;}
+        var cv=document.createElement('canvas');cv.width=w;cv.height=h;
+        var ctx=cv.getContext('2d');
+        // White underlay: a transparent PNG would otherwise go black as JPEG.
+        ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+        ctx.drawImage(img,0,0,w,h);
+        cb(cv.toDataURL('image/jpeg',quality));
+      }catch(err){onError('Could not process that image: '+(err.message||err));}
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function captureCard(input){
+  if(!input.files||!input.files[0])return;
+  var file=input.files[0];
+  var btn=document.getElementById('card-btn');
+  var orig=btn.innerHTML;
+  btn.innerHTML='Processing...';btn.disabled=true;
+  function done(){btn.innerHTML=orig;btn.disabled=false;input.value='';}
+  function cardFail(msg){done();showErr(msg);}
+  compressImage(file,1400,0.72,function(dataUrl){
+    pendingCard=dataUrl;
+    done();
+    renderCardPreview();
+  },cardFail);
+}
+
+function renderCardPreview(){
+  var box=document.getElementById('card-preview');
+  var btn=document.getElementById('card-btn');
+  if(!box)return;
+  if(!pendingCard){
+    box.style.display='none';box.innerHTML='';
+    if(btn)btn.innerHTML='<i class="ti ti-camera" style="font-size:15px;vertical-align:-2px;margin-right:6px"></i>Take a picture of business card';
+    return;
+  }
+  box.style.display='block';
+  box.innerHTML='<div style="position:relative;display:inline-block">'
+    +'<img src="'+pendingCard+'" alt="Business card" style="max-width:100%;max-height:150px;border-radius:10px;border:1px solid var(--line);display:block">'
+    +'<button onclick="clearCard()" aria-label="Remove picture" style="position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:15px;line-height:1;cursor:pointer;font-family:inherit">&times;</button>'
+    +'</div>'
+    +'<p style="font-size:12px;color:var(--text2);margin-top:6px">Card attached. You can fill in the details later.</p>';
+  if(btn)btn.innerHTML='<i class="ti ti-camera" style="font-size:15px;vertical-align:-2px;margin-right:6px"></i>Retake picture';
+}
+
+function clearCard(){pendingCard=null;renderCardPreview();}
+
+// Full-size viewer, so the card can actually be read when transcribing it.
+function viewImage(src){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick=function(){ov.remove()};
+  var img=document.createElement('img');
+  img.src=src;
+  img.style.cssText='max-width:100%;max-height:100%;border-radius:8px';
+  var hint=document.createElement('p');
+  hint.textContent='Tap anywhere to close';
+  hint.style.cssText='position:absolute;bottom:20px;left:0;right:0;text-align:center;color:#fff;font:600 12px -apple-system,system-ui,sans-serif;opacity:.75';
+  ov.appendChild(img);ov.appendChild(hint);
+  document.body.appendChild(ov);
+}
+
 // Open a category on its own screen rather than expanding it under the
 // stats on the home screen, which buried the list and read as confusing.
 // Reuses the Contacts screen so search, sorting and the contact rows all
@@ -821,7 +907,19 @@ function st(tab,btn){
 }
 function rdn(c){
   document.getElementById('nl').innerHTML=!c.notes.length?'<p style="font-size:13px;color:var(--text2)">No notes yet.</p>':c.notes.map(function(n){return'<div class="nc"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">'+n.tag+'</span><span style="font-size:11px;color:var(--text3)">'+n.date+'</span></div><p style="font-size:13px;line-height:1.5">'+n.text+'</p></div>'}).join('');
-  document.getElementById('al').innerHTML=!c.att.length?'<p style="font-size:13px;color:var(--text2)">No attachments yet.</p>':c.att.map(function(a){return'<div class="ap"><i class="ti ti-file" style="font-size:14px;color:var(--text2)"></i>'+a+'</div>'}).join('');
+  // Attachments are a mix: older entries are plain filename strings, newer
+  // ones are objects. An image renders as a thumbnail that opens full size,
+  // since a business card is only useful if it can be read.
+  document.getElementById('al').innerHTML=!c.att.length?'<p style="font-size:13px;color:var(--text2)">No attachments yet.</p>':c.att.map(function(a){
+    if(a&&a.t==='img'&&a.d){
+      return'<div style="margin:0 8px 8px 0">'
+        +'<img src="'+a.d+'" alt="'+(a.n||'Attachment')+'" onclick="viewImage(this.src)" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:pointer;display:block">'
+        +'<p style="font-size:11px;color:var(--text2);margin-top:4px;max-width:96px">'+(a.n||'Image')+'</p>'
+        +'</div>';
+    }
+    var label=(a&&a.n)?a.n:a;
+    return'<div class="ap"><i class="ti ti-file" style="font-size:14px;color:var(--text2)"></i>'+label+'</div>';
+  }).join('');
 }
 function rdc(c){
   var up=c.cal.filter(function(e){return!e.past}),pa=c.cal.filter(function(e){return e.past});
@@ -1041,7 +1139,11 @@ async function svc(){
     dateAdded:td(),lastContact:td(),lastMethod:'—',
     next:nl(cat),ai:nxid++%AVC.length,
     score:cat.amount===0?80:cat.amount<=3?60:35,
-    photo:null,notes:[],att:[],cal:[],hist:[]
+    photo:null,notes:[],
+    // Attachments hold legacy filename strings as well as objects, so the
+    // card goes in as an object the renderer can tell apart.
+    att:pendingCard?[{t:'img',n:'Business card',d:pendingCard,dt:td()}]:[],
+    cal:[],hist:[]
   };
   // Save to Supabase first and get back the real UUID
   await saveContact_DB(c);
@@ -1055,6 +1157,9 @@ async function svc(){
   }
   ['nf','nl2','nph','nem','nco','nli','nig'].forEach(function(id){document.getElementById(id).value=''});
   scid=null;sw='';
+  // Clear the card only once it is safely on a saved contact, so a failed
+  // save above leaves the photo in place to retry with.
+  pendingCard=null;renderCardPreview();
   document.getElementById('sm').textContent='Reminder set: '+nl(cat)+'.';
   cs('sh-rel');os('sh-saved');
 }
@@ -1163,12 +1268,23 @@ function showLoading(show){
 }
 
 // Keep localStorage as fallback
+var quotaWarned=false;
 function saveData(){
   try{
     localStorage.setItem('pocketc_contacts',JSON.stringify(cons));
     localStorage.setItem('pocketc_cats',JSON.stringify(cats));
     localStorage.setItem('pocketc_events',JSON.stringify(evs));
-  }catch(e){}
+    quotaWarned=false;
+  }catch(e){
+    // Card photos make the ~5MB quota genuinely reachable. Swallowing this
+    // would quietly stop the local cache updating while the app looked fine,
+    // which is exactly how earlier bugs here went unnoticed for months.
+    var full=e&&(e.name==='QuotaExceededError'||e.name==='NS_ERROR_DOM_QUOTA_REACHED'||e.code===22);
+    if(full&&!quotaWarned){
+      quotaWarned=true;
+      showErr('This device is out of offline storage, so recent changes are not cached here. Your data is still saved to the cloud while you are signed in. Removing some business card photos will free space.');
+    }
+  }
 }
 
 // ── PROFILE ──
